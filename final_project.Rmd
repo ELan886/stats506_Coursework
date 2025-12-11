@@ -1,0 +1,188 @@
+---
+title: "Final_project"
+output: pdf_document
+date: "2025-12-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(haven)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+data <- read_dta("gss7224_r2.dta")
+```
+
+```{r}
+dim(data)
+```
+
+```{r}
+head(data)
+```
+
+```{r}
+unique(data$abdefect)
+```
+
+```{r}
+"abany" %in% names(data)
+"degree" %in% names(data)
+```
+
+```{r}
+gss <- data %>%
+  select(year, degree, abany, abdefect)
+```
+
+```{r}
+head(gss)
+```
+
+```{r}
+gss <- gss %>%
+  mutate(
+    degree = as_factor(degree),
+    abany = as_factor(abany),
+    abdefect = as_factor(abdefect),
+    abany_clean = case_when(
+      abany == "yes" ~ "Yes",
+      abany == "no" ~ "No",
+      TRUE ~ "Other"),
+    abany_clean = factor(abany_clean, levels = c("Yes", "No", "Other")),
+    abdefect_clean = case_when(
+      abdefect == "yes" ~ "Yes",
+      abdefect == "no" ~ "No",
+      TRUE ~ "Other"),
+    abdefect_clean = factor(abdefect_clean, levels = c("Yes", "No", "Other")),
+    degree_clean = case_when(
+      degree == "less than high school" ~ "< HS",
+      degree == "high school" ~ "High School",
+      degree == "associate/junior college" ~ "College",
+      degree == "bachelor's" ~ "Bachelor",
+      degree == "graduate" ~ "Graduate",
+      TRUE ~ "Other"
+    ),
+    degree_clean = factor(degree_clean,
+                          levels = c("< HS", "High School", "College", "Bachelor", "Graduate", "Other"))
+  )
+```
+
+```{r}
+table(gss$abany_clean)
+table(gss$degree_clean)
+table(gss$abdefect_clean)
+```
+
+```{r}
+prop.table(table(gss_trend$degree_clean, gss_trend$abany_clean), 1)*100
+prop.table(table(gss_trend$degree_clean, gss_trend$abdefect_clean), 1)*100
+```
+```{r}
+prop.table(table(gss_trend$degree_clean, gss_trend$abany_clean), 1)*100
+prop.table(table(gss_trend$degree_clean, gss_trend$abdefect_clean), 1)*100
+```
+
+```{r}
+gss_trend <- gss %>%
+  filter(year >= 1977,
+         abany_clean %in% c("Yes", "No"),
+         abdefect_clean %in% c("Yes", "No"),
+         degree_clean != "Other")
+```
+
+```{r}
+trend <- gss_trend %>%
+  group_by(year, degree_clean) %>%
+  summarise(support = mean(abany_clean=="Yes") * 100,
+            support_defect = mean(abdefect_clean=="Yes") * 100,
+            n = n(),
+            .groups = "drop")
+```
+
+
+
+```{r}
+ggplot(trend, aes(x = year, y = support, color=degree_clean)) +
+       geom_point(alpha = 0.5) + 
+       geom_smooth(se = FALSE, size = 1) +
+       scale_x_continuous(breaks = seq(1977, 2024, 5)) + 
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Trend in Abortion Support by Educational Level (1977-2024)",
+    x = "Year",
+    y = "Percent Supporting Abortion"
+  )
+
+ggplot(trend, aes(x = year, y = support_defect, color=degree_clean)) +
+       geom_point(alpha = 0.5) + 
+       geom_smooth(se = FALSE, size = 1) +
+       scale_x_continuous(breaks = seq(1977, 2024, 5)) + 
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Trend in Support for Abortion in Cases of Serious Defect",
+    x = "Year",
+    y = "Percent Supporting Abortion"
+  )
+```
+
+```{r}
+gss_model <- gss %>%
+  filter(abany_clean %in% c("Yes","No"),
+         degree_clean != "Other")%>%
+  droplevels()
+
+gss_model$abany_bin <- ifelse(gss_model$abany_clean == "Yes", 1, 0)
+fit <- glm(abany_bin ~ degree_clean + year, data = gss_model, family = binomial())
+summary(fit)
+
+gss_model_def <- gss %>%
+  filter(abdefect_clean %in% c("Yes","No"),
+         degree_clean != "Other")%>%
+  droplevels()
+
+gss_model_def$abdefect_bin <- ifelse(gss_model_def$abdefect_clean == "Yes", 1, 0)
+fit_def <- glm(abdefect_bin ~ degree_clean + year, data = gss_model_def, family = binomial())
+summary(fit_def)
+```
+
+```{r}
+new <- expand.grid(
+  year = seq(min(gss_model$year), max(gss_model$year), by = 1),
+  degree_clean = levels(gss_model$degree_clean)
+)
+new$pred <- predict(fit, new, type = "response")
+
+ggplot(new, aes(x = year, y = pred, color = degree_clean)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Predicted Probability of Supporting Legal Abortion",
+    x = "Year",
+    y = "Predicted Probability",
+    color = "Education Level"
+  ) +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal(base_size = 14)
+
+
+new_def <- expand.grid(
+  year = seq(min(gss_model_def$year), max(gss_model_def$year), by = 1),
+  degree_clean = levels(gss_model_def$degree_clean)
+)
+new_def$pred <- predict(fit_def, new_def, type = "response")
+
+ggplot(new_def, aes(x = year, y = pred, color = degree_clean)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Predicted Probability of Supporting Abortion for Serious Defect ",
+    x = "Year",
+    y = "Predicted Probability",
+    color = "Education Level"
+  ) +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal(base_size = 14)
+```
+
